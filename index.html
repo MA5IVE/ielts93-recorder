@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IELTS 9.3 — Speaking Recorder</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f5f5fb;color:#19233b;font:15px/1.5 Arial,sans-serif}
+header{padding:17px;background:#403a91;color:white}main{max-width:740px;margin:18px auto;padding:0 14px}
+.card{background:#fff;border:1px solid #d9ddef;border-radius:11px;padding:20px;margin-bottom:14px}
+button{border:1px solid #d9ddef;background:white;padding:11px 13px;border-radius:7px;margin:4px;cursor:pointer}
+.primary{background:#403a91;color:white;font-weight:bold}button:disabled{opacity:.4}
+#clock{font-size:34px;font-weight:bold;color:#403a91;font-variant-numeric:tabular-nums}
+#status{padding:10px;background:#e8e5ff;border-radius:8px;margin-top:12px}audio{width:100%;margin-top:12px}
+li{margin-bottom:5px}.muted{color:#5f6785;font-size:12px}
+</style></head><body>
+<header><b>IELTS 9.3 ONLINE</b><div>Speaking recorder — Cambridge IELTS 9, Test 3</div></header><main>
+<div class="card"><h2 id="title">Speaking</h2><p id="intro"></p><div id="questions"></div></div>
+<div class="card"><p class="muted">A separate window is needed for microphone permission. Audio stays on your device until you explicitly send it to the exam. This static webpage does not upload any audio to a server.</p>
+<b id="phase">Ready</b><div id="clock">--:--</div>
+<button id="prep" onclick="prepare()">Begin 1-minute preparation</button>
+<button id="start" class="primary" onclick="startRecording()">Start recording</button>
+<button id="stop" onclick="stopRecording()" disabled>Stop</button>
+<button id="send" class="primary" onclick="sendRecording()" disabled>Send to exam</button>
+<button id="backup" onclick="downloadBackup()" disabled>Download backup</button>
+<audio controls id="player"></audio><div id="status">Review the task and click Start recording to request microphone access.</div>
+</div></main>
+<script>
+'use strict';
+const query=new URLSearchParams(location.search),part=Number(query.get('part')),nonce=query.get('nonce')||'';
+const data={
+1:{title:'Part 1 — Interview',description:'Answer the questions one by one. Approximately 4–5 minutes.',seconds:300,html:'<h3>Telephoning</h3><ol><li>How often do you make telephone calls? Why / why not?</li><li>Who do you spend most time talking to on the telephone? Why?</li><li>When do you think you will next make a telephone call? Why?</li><li>Do you sometimes prefer to send a text message instead of telephoning? Why / why not?</li></ol>'},
+2:{title:'Part 2 — Long turn',description:'Prepare for 60 seconds, then speak for 1–2 minutes.',seconds:120,html:'<h3>Describe a journey (for example by car, plane or boat) that you remember well.</h3><p>You should say:</p><ul><li>where you went</li><li>how you travelled</li><li>why you went on the journey</li></ul><p>And explain why you remember this journey well.</p>'},
+3:{title:'Part 3 — Discussion',description:'Give extended answers. Approximately 4–5 minutes.',seconds:300,html:'<h3>Daily travel</h3><ol><li>Why do people need to travel every day?</li><li>What problems can people have when they make a daily journey, for example to work or school? Why?</li><li>Some people say that daily journeys will not be so common in the future. Do you agree or disagree? Why?</li></ol><h3>International travel</h3><ol><li>What do you think people can learn from travelling to other countries? Why?</li><li>Can travel make a positive difference to the economy of a country? How?</li><li>Do you think a society can benefit if its members have experience of travelling to other countries? In what ways?</li></ol>'}
+};
+const $=id=>document.getElementById(id);
+let mic=null,recorder=null,chunks=[],blob=null,clockInterval=null,timeRemaining=0,prepared=false,blobUrl='';
+if(!data[part]||!nonce||!window.opener){
+ $('title').textContent='Open this page from IELTS 9.3';$('intro').textContent='No recording session found.';
+ ['prep','start','stop','send','backup'].forEach(id=>$(id).disabled=true);
+}else{
+ $('title').textContent=data[part].title;$('intro').textContent=data[part].description;
+ $('questions').innerHTML=data[part].html;
+ $('prep').style.display=part===2?'inline-block':'none';$('start').disabled=part===2;
+}
+function time(t){return String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0')}
+function status(t){$('status').textContent=t}
+function clearClock(){if(clockInterval){clearInterval(clockInterval);clockInterval=null}}
+function countdown(seconds,onFinish){
+ clearClock();timeRemaining=seconds;$('clock').textContent=time(timeRemaining);
+ clockInterval=setInterval(()=>{timeRemaining--;$('clock').textContent=time(Math.max(0,timeRemaining));if(timeRemaining<=0){clearClock();onFinish()}},1000);
+}
+function prepare(){
+ if(part!==2||prepared)return;
+ $('prep').disabled=true;$('phase').textContent='Preparation in progress';
+ status('Use the 60 seconds to prepare brief notes. Recording has not started.');
+ countdown(60,()=>{prepared=true;$('start').disabled=false;$('phase').textContent='Ready to speak';status('Press Start recording when ready.')});
+}
+async function startRecording(){
+ if(!data[part]||!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia||!window.MediaRecorder){status('Microphone recording is not supported in this browser.');return}
+ try{
+  if(mic)mic.getTracks().forEach(t=>t.stop());
+  mic=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});
+  let preferred=['audio/webm;codecs=opus','audio/mp4','audio/webm','audio/ogg'];
+  let mime=preferred.find(m=>MediaRecorder.isTypeSupported(m));
+  recorder=mime?new MediaRecorder(mic,{mimeType:mime,audioBitsPerSecond:48000}):new MediaRecorder(mic);
+  chunks=[];blob=null;$('send').disabled=true;$('backup').disabled=true;
+  recorder.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
+  recorder.onstop=()=>{
+   blob=new Blob(chunks,{type:recorder.mimeType||'audio/webm'});
+   if(blobUrl)URL.revokeObjectURL(blobUrl);blobUrl=URL.createObjectURL(blob);$('player').src=blobUrl;
+   $('stop').disabled=true;$('start').disabled=false;$('send').disabled=!blob.size;$('backup').disabled=!blob.size;
+   $('phase').textContent='Recording completed';status('Listen and choose Send to exam, or record again.');
+   if(mic)mic.getTracks().forEach(t=>t.stop());
+  };
+  recorder.start(1000);$('start').disabled=true;$('stop').disabled=false;
+  $('phase').textContent='Recording Part '+part;status('Microphone active. Speak clearly.');
+  countdown(data[part].seconds,stopRecording);
+ }catch(e){status('Microphone error: '+e.message);$('start').disabled=false}
+}
+function stopRecording(){clearClock();if(recorder&&recorder.state!=='inactive')recorder.stop()}
+async function sendRecording(){
+ if(!blob||!window.opener){status('No recording or exam connection.');return}
+ try{
+  $('send').disabled=true;status('Sending audio to the exam...');
+  const bytes=await blob.arrayBuffer();
+  window.opener.postMessage({type:'IELTS93_RECORDING',nonce:nonce,part:part,mime:blob.type,audio:bytes},'*',[bytes]);
+  status('Audio transferred. Return to IELTS 9.3 to upload.');setTimeout(()=>window.close(),1000);
+ }catch(e){status('Transfer failed: '+e.message);$('send').disabled=false}
+}
+function downloadBackup(){
+ if(!blob)return;const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;
+ a.download='IELTS93_Speaking_Part'+part+(blob.type.includes('mp4')?'.m4a':'.webm');
+ a.click();setTimeout(()=>URL.revokeObjectURL(u),5000);
+}
+window.addEventListener('beforeunload',()=>{clearClock();if(mic)mic.getTracks().forEach(t=>t.stop())});
+</script></body></html>
